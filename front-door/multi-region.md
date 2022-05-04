@@ -10,10 +10,9 @@ After further consultation with their architecture team, they decide to test Azu
 ## Prerequesites
 - Make sure you have two independent deployments of the AKS baseline architecture reference implementation deployed and available.
 - These need to be deployed to *different regions*.
-- (!!!) When connecting to backend system, Front Door requires certificates issued by a well-known certificate authority. For the purpose of this walkthrough, only self-signed certificates have been created instead. This is why we will use the unencrypted http protocol (instead of https) to connect to the Application Gateways. *Do not use this setup* in a production environment, as it exposes unprotected public endpoints.
+- When connecting to backend system, Front Door requires certificates issued by a well-known certificate authority. For the purpose of this walkthrough, only self-signed certificates have been created instead. This is why we will use the unencrypted http protocol (instead of https) to connect to the Application Gateways. *Do not use this setup* in a production environment, as it exposes unprotected public endpoints.
   - Add a listener for port 80 in your Application Gateway configuration.
   - Remember to add a Firewall rule in the VNet hosting your Application Gateway.
-- If you have created self-signed certificates for the https endpoints exposed by the Application Gateway instances, make sure you have both available.
 
 
 ##  Walthrough Overview
@@ -48,17 +47,22 @@ In this overview, you will
 
    ![](img/017_new-fd_endpoint-configuration.png)
 
-   Add a route (HTTPS only):
+   Add a route:
+
+   (Make sure to only _accept_ HTTPS, but use HTTP for _forwarding_.)
 
    ![](img/016_new-fd_route.png)
    
-   Add a new origin group (!!! Probe Method: GET)
-
-   ![](img/014_new-fd_origin.png)
-
-   Add a new origin to the group. (If you used self-signed certificate for your Application Gateway, remember to uncheck the 'Enable the validation' checkbox.) (!!! Overwrite Host Header with 'bicycle....com')
+   Create a new origin group:
 
    ![](img/015_new-fd_origin-group.png)
+
+   And, to this origin group, add a new origin pointing to your Application Gateway as Backend. Please make sure to...
+   - ...use the IP as _Host name_,
+   - ...use the domain name `bicycle.[your domain]` as _Origin host header_.
+   - ...disable _Certificate subject name validation_.
+
+   ![](img/014_new-fd_origin.png)
 
    Skip the Security Policy for now.
 
