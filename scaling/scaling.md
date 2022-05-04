@@ -71,18 +71,24 @@
    (It takes some seconds to generate some millions of random numbers, simply putting some pressure on the CPU).
 
 
-#  Run your first Load Test with Azure Load Balancer
+#  Run your first Load Test with Azure Load Testing
 
 1. (Prerequisite) We are creating some load on the backend that might cause slow responses. To avoid Application Gateway to close connections early, increase the timeout from 60 to 300 seconds:
    
    ![](img/030_load-test_increase-timeout.png)
 
 
-1. (For your information only) We will use Azure Load Tester in the following steps. This takes a Apache JMeter test plan as input to simulate load on workloads running on the Azure platform. You can use the JMeter GUI (see sceenshot) to define a testplan; in this tutorial, we will use a predefined test plan.
+1. (For your information only) We will use Azure Load Testing in the following steps. This takes a Apache JMeter test plan as input to simulate load on workloads running on the Azure platform. You can use the JMeter GUI (see sceenshot) to define a testplan; in this tutorial, we will use a predefined test plan.
 
    ![](img/035_load-test_jmeter.png)
 
-1. In the Azure portal, create a new Azure Load Tester.
+1. In the Azure portal, create a new Azure Load Testing in (Please note that this resoruce is currently in Public Preview!).
+   Please create the instance in region _East US 2_ (no matter where the other resources are deployed).
+   (Note that Load Testing currently is only available in a limited set of regions.)
+
+   ![](img/040_load-test-1_new-load-testing.png)
+
+   ![](img/041_load-test-1_create-load-testing.png)
 
 1. Create a new test and name it "25 threads, 10 loops"
    
@@ -110,7 +116,7 @@
 
 # Run your second Test
 
-1. Deploy the `Horizontal Pod Autoscaler` defined in randommultiplications-hpa.yaml
+1. Deploy the `Horizontal Pod Autoscaler` defined in `randommultiplications-hpa.yaml`.
 
    ```bash
    kubectl apply -f randommultiplications-hpa.yaml
@@ -132,7 +138,7 @@
    ...
    ```
 
-1. Re-run the existing Azure Load Tester Test again and observe how kubernetes deploys further (up to 10) pods to serve incoming requests.
+1. Re-run the existing Azure Load Test again and observe how kubernetes deploys further (up to 10) pods to serve incoming requests.
 
    Example output:
    ```bash
@@ -164,7 +170,7 @@
 
 1. Increase `maxReplicas` in `randommultiplications-hpa.yaml` to 100 and redeploy the pod autoscaler.
 
-1. Create another test in Azure Load Balancer with 50 threads and 100 loops and run it.
+1. Create another test in Azure Load Testing with 50 threads and 100 loops and run it.
 
    ![](img/061_load-test-3_test-parametes.png)
 
