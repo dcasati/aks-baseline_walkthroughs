@@ -202,10 +202,51 @@
    I0504 08:51:17.536867 1 klogx.go:86] Pod a0008/mult-deployment-7766b6c6b8-8rzzz is unschedulable
    ```
 
-1. But why is that? Looking at the _Nodes_ tab of AKS _Insights_, neither memory or CPU capacity is exhausted. Go to the metrics and select `insights.containers/pods` namespace, `podCount` as metric and apply a splitting by `Node`. You see that the number of pods scheduled on a node does not exceed a value of 26 (the cluster definition defines a `maxPods` to be 30 for each node; we are still investigating why it does not reach 30).
+1. But why is that? Open the AKS Logs, search for the predefined query _Kubernetes events_ and run it.
+
+   ![](img/064_load-test-3_log-query-1.png)
+
+   The query is defined as follows...
+
+   ```
+   KubeEvents
+   | where TimeGenerated > ago(7d) 
+   | where not(isempty(Namespace))
+   | top 200 by TimeGenerated desc
+   ```
+
+   ...and will reveal messages like:
+
+   ```
+   0/8 nodes are available: 1 node(s) were unschedulable, 3 node(s) had taint {CriticalAddonsOnly: true}, that the pod didn't tolerate, 4 Insufficient cpu.
+   ```
+   
+   The interesting part is `4 Insufficient cpu`, preventing pods from being assigned to the nodes of our `npuser01` node pool. Let us take a closer look at one of these nodes using:
+
+   ```bash
+   kubectl describe node aks-npuser01-37699233-vmss000004  | less
+   ```
+
+   The output reveals that 1870 of 1900 avaialable mili cores have already been allocated. 
+
+   ```
+   Allocatable:
+   cpu:                1900m
+   ...
+   Allocated resources:
+   (Total limits may be over 100 percent, i.e., overcommitted.)
+   Resource           Requests      Limits
+   --------           --------      ------
+   cpu                1870m (98%)   6470m (340%)
+   ```
+
+   As each pod requests 50 mili cores (see resource requests in `randommultiplications.yaml`), scheduling another one would exceed the limit of 1900 mili cores available on that node.
+
+   Note that looking at the _Nodes_ tab of AKS _Insights_, CPU capacity does _not_ seem to be exhausted (the bars representing the load remain green and do not reach a high percentage). This is because this load represents the actual CPU load rather than the resource requests.
+   
+1. (For information only) Using the `Metrics` balde, you can also configure custom graphs to get insights about the state of you cluster. For example, select the namespace `insights.containers/pods`, metric `podCount` and apply a splitting by `Node` to see the number of pods scheduled on each node. 
 
    ![](img/063_load-test-3_pods-per-node.png)
-
 
 1. Once the test terminated, inspect the results of the test again. Also see how the peak of requests per second correlates with the peak of deployed pods.
 

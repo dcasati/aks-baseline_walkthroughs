@@ -60,7 +60,7 @@ metadata:
   name: mult-pdb
   namespace: a0008
 spec:
-  minAvailable: 75%
+  minAvailable: 50%
   selector:
     matchLabels:
       app.kubernetes.io/name: mult
