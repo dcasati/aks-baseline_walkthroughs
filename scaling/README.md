@@ -278,9 +278,31 @@
    ```
 
 # Resources
+
+## AKS Scaling and Monitoring
 [Automatically scale a cluster to meet application demands on Azure Kubernetes Service (AKS)](https://docs.microsoft.com/en-us/azure/aks/cluster-autoscaler)
 
+
+[Examine the node and pod health](https://docs.microsoft.com/en-us/azure/architecture/operator-guides/aks/aks-triage-node-health)
+
+[AKS troubleshooting](https://docs.microsoft.com/en-us/azure/aks/troubleshooting)
+
+_Resource logs_ in [Monitoring AKS data reference](https://docs.microsoft.com/en-us/azure/aks/monitor-aks-reference#resource-logs)
+
+[Monitoring Azure Kubernetes Service (AKS) with Azure Monitor](https://docs.microsoft.com/en-us/azure/aks/monitor-aks)
 [Horizontal Pod Autoscaling](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
+
+## Kubernetes Scaling
+
+[Horizontal Pod Autoscaler Walkthrough](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale-walkthrough/)
+
+[How to query logs from Container insights](https://docs.microsoft.com/en-us/azure/azure-monitor/containers/container-insights-log-query#resource-logs)
+
+_Frequently Asked Questions_ (`autoscaler/cluster-autoscaler/FAQ.md`) in [kubernetes/autoscaler](https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/FAQ.md)
+
+[Reserve Compute Resources for System Daemons](https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/)
+
+## Azure Load Testing
 
 [Quickstart: Create and run a load test with Azure Load Testing Preview](https://docs.microsoft.com/en-us/azure/load-testing/quickstart-create-and-run-load-test)
 

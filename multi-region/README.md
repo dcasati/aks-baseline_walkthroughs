@@ -1,18 +1,19 @@
 # Multi-Region Setup.
 
-The business unit has deployed their application in two different application stamps in different regions. To improve availability of their solution for their end customers and protect from regional data center outages, they want both stamps to back up each other.
+The business unit has deployed their application in two regions as independent application stamps. To improve overall availability of their solution for their end customers and protect from regional data center outages, they want both stamps to back up each other.
 
-After further consultation with their architecture team, they decide to test Azure Front Door offering further benefits.
-- Traffic Optimization 
-- SSL Offloading
-- Automatic Failover
+After further consultation with their architecture team, they decide to test [Azure Front Door](https://docs.microsoft.com/en-us/azure/frontdoor/front-door-overview#key-benefits) offering further benefits: 
+- Traffic optimization using edge locations and split TCP
+- SSL offloading
+- Automatic failover
 
 ## Prerequesites
 - Make sure you have two independent deployments of the AKS baseline architecture reference implementation deployed and available.
-- These need to be deployed to *different regions*.
+- These need to be deployed to *different regions* (ideally in distant regions).
 - When connecting to backend system, Front Door requires certificates issued by a well-known certificate authority. For the purpose of this walkthrough, only self-signed certificates have been created instead. This is why we will use the unencrypted http protocol (instead of https) to connect to the Application Gateways. *Do not use this setup* in a production environment, as it exposes unprotected public endpoints.
-  - Add a listener for port 80 in your Application Gateway configuration.
-  - Remember to add a Firewall rule in the VNet hosting your Application Gateway.
+  - Follow [this guide](./app-gateway_add-http.md) to add...
+    - ...a listener for port 80 in your Application Gateway configuration and...
+    - ...a firewall rule in the VNet hosting your Application Gateway.
 
 
 ##  Walthrough Overview
@@ -37,13 +38,13 @@ In this overview, you will
 
    ![](img/011_new-fd_1.png)
 
+   Use `[your prefix]-rg-bu0001a0008-frontdoor` as name for your Front Door instance.
+
    ![](img/012_new-fd_2.png)
 
    Do not configure any secrets, but define an endpoint named `[your prefix]-rg-bu0001a0008` 
 
    ![](img/013_new-fd_3.png)
-
-   Add an endpoint configuration to your Front Door:
 
    ![](img/017_new-fd_endpoint-configuration.png)
 
@@ -53,13 +54,16 @@ In this overview, you will
 
    ![](img/016_new-fd_route.png)
    
-   Create a new origin group:
+   Create a new origin group. Remember to ...
+   - specify `GET` as probe method,
+   - (for this demo setup) reduce the probe interval to 15 seconds.
 
    ![](img/015_new-fd_origin-group.png)
 
    And, to this origin group, add a new origin pointing to your Application Gateway as Backend. Please make sure to...
-   - ...use the IP as _Host name_,
-   - ...use the domain name `bicycle.[your domain]` as _Origin host header_.
+   - ...use the backend region as _Name_ (recommended),
+   - ...select _Application Gateway_ as _Origin Type_  and select your instance from the _Host name_ drop down,
+   - ...overwrite the _Origin host header_ with your domain name `bicycle.[your domain]` and 
    - ...disable _Certificate subject name validation_.
 
    ![](img/014_new-fd_origin.png)
@@ -76,20 +80,22 @@ In this overview, you will
  
    ![](img/20_test-fd_endpoint-url.png)
 
-   ...and open `http://<your endpoint fqdn>`:
+   ...and open `https://<your endpoint fqdn>`:
 
    ![](img/21_test-fd_browser.png)
 
 
 ### Add a second origin as backend.
 
-1. Now add a second origin and use the setup that one of your colleagues deployed.
+1. Now add a second origin and use the Application Gateway of an application stamp that one of your colleagues deployed.
 
    ![](img/030_fd-origin_add-origin.png)
 
 1. Deploy a Test-VM in the region of that second origin. 
 
    ![](img/031_fd-origin_deploy-test-vm.png)
+
+   Note that it might take some minutes until the configuration update is effective.
 
 1. Connect to that VM, oben the browser and navigate to the Front Door endpoint. Compare the value of _Host Name_ with the value when accessing via your own browser.
 
@@ -151,6 +157,8 @@ In this overview, you will
    ![](img/050_restrict-appgw_open-direct-connection.png)
 
 1. To restrict access from Front Door only, go back to the Network Security Groups applied to the subnet hosting your Application Gateway. Change the inbound rule for port 80 to only allow requests originating from Service Tag _AzureFrontDoor.Backend_.
+
+   Note that it might take some minutes until this change is effective.
    
    ![](img/050_restrict-appgw_inbound-from-front-door.png)
 
@@ -160,7 +168,7 @@ In this overview, you will
 
     ![](img/052_restrict-appgw_direct-connection-timeout.png)
 
-1. Get access to a second Front Door (either by deploying another instance of joining forces with another workshop participant.)
+1. Get access to a second Front Door (either by deploying another instance or joining forces with another workshop participant.)
 
 1. Ensure both Front Door instances have the same origins set up. And verify, both Front Door instances can well reach all origins. This shows, that the rules in the Network Security Group allow incoming requests from arbitrary Front Door instances to reach the Application Gateway.
 
@@ -169,82 +177,28 @@ In this overview, you will
 ## Ensure only _your_ Front Door can access your Application Gateway using WAF.
 
 1. Take a look at [How do I lock down the access to my backend to only Azure Front Door?
-](https://docs.microsoft.com/en-us/azure/frontdoor/front-door-faq#how-do-i-lock-down-the-access-to-my-backend-to-only-azure-front-door-); the last paragraph of this section shows how to use the http header `X-Azure-FDID` to apply a Web Application Firewall (WAF) rule to only accept requests originating from specific Front Doors on the Application Gateway level. 
+](https://docs.microsoft.com/en-us/azure/frontdoor/front-door-faq#how-do-i-lock-down-the-access-to-my-backend-to-only-azure-front-door-); the last paragraph of this section shows how to use the http header `X-Azure-FDID` to apply a Web Application Firewall (WAF) rule to only accept requests originating from specific Front Doors on the Application Gateway level. In the referred _Example 7_ of [Create and use Web Application Firewall v2 custom rules on Application Gateway](https://docs.microsoft.com/en-us/azure/web-application-firewall/ag/create-custom-waf-rules#example-7), 
 
-1. To define custom rules, we need to slightly change our WAF setup. Application Gateway two ways of defining WAF rules: 
-   - The _legacy_ way is configuring a WAF configuration within the Application Gateway. This is the configuration you find in your setup after deployment. This configuration does not allow to define custom rules but only pre-defined rule collections, e.g., OWASP rule sets.
-
-   ![](img/060_waf_config-example.png)
-
-   - Deploying a _Web Application Firewall Policy_ is the newer way. It allows to define the policy as dedicated Azure resource which can be reused by different Application Gateways. This configuration allows to define custom rules, e.g., based on http headers.
-
-1. As our setup uses the legacy way, we will need to migrate the WAF configuration to a WAF policy. There is a [PowerShell script](https://docs.microsoft.com/en-us/azure/web-application-firewall/ag/migrate-policy) available that you find in `res\migrate-policy.ps1`. Please use it to crate a WAF policy from your current Application Gateway configuration and update your gateway:
-
-   DOES NOT WORK!!!
-
-   ```PowerShell
-   .\migrate-policy.ps1 `
-   >> -subscriptionId "12345678-abcd-efgh-ijkl-987654321abc" `
-   >> -resourceGroupName "shco-rg-bu0001a0008" `
-   >> -applicationGatewayName "shco-apw-pbl5hvxsyw5yy" `
-   >> -wafPolicyName "shco-wafp-pbl5hvxsyw5yy"
-   Set-AzApplicationGateway : Either Data or KeyVaultSecretId must be specified for Certificate '/subscriptions/12345678-abcd-efgh-ijkl-987654321abc/resourceGroups/shco-rg-b
-   u0001a0008/providers/Microsoft.Network/applicationGateways/shco-apw-pbl5hvxsyw5yy/trustedRootCertificates/root-cert-wildcard-aks-ingress' in Application Gateway.
-   At C:\_BUFFER\CPQ\migrate-policy.ps1:170 char:14
-   +     $appgw = Set-AzApplicationGateway -ApplicationGateway $appgw
-   +              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      + CategoryInfo          : CloseError: (:) [Set-AzApplicationGateway], CloudException
-      + FullyQualifiedErrorId : Microsoft.Azure.Commands.Network.SetAzureApplicationGatewayCommand
-
-   firewallPolicy: shco-wafp-pbl5hvxsyw5yy has been created/updated successfully and applied to applicationGateway: shco-apw-pbl5hvxsyw5yy!
-
-   Name                                     Account                          SubscriptionName                 Environment                     TenantId
-   ----                                     -------                          ----------------                 -----------                     --------
-   bastianulke -- External (ce9d064e-10a... lh@m365x54640868.onmicrosoft.com bastianulke -- External          AzureCloud                      679a5224-7633-461d-adce-df49...
-
-   CustomRules       : {}
-   PolicySettings    : Microsoft.Azure.Commands.Network.Models.PSApplicationGatewayFirewallPolicySettings
-   ManagedRules      : Microsoft.Azure.Commands.Network.Models.PSApplicationGatewayFirewallPolicyManagedRules
-   ResourceGroupName : shco-rg-bu0001a0008
-   Location          : centralus
-   ResourceGuid      :
-   Type              : Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies
-   Tag               :
-   TagsTable         :
-   Name              : shco-wafp-pbl5hvxsyw5yy
-   Etag              : W/"9ba32115-d9d3-4895-8975-8955a4f967f2"
-   Id                : /subscriptions/12345678-abcd-efgh-ijkl-987654321abc/resourceGroups/shco-rg-bu0001a0008/providers/Microsoft.Network/ApplicationGatewayWebApplicationFir
-                     ewallPolicies/shco-wafp-pbl5hvxsyw5yy
-   ```
-
-   ...but certificate definition details missing in PowerShell object:
-   ```
-   $appgw=Get-AzApplicationGateway -Name "shco-apw-pbl5hvxsyw5yy" -ResourceGroupName "shco-rg-bu0001a0008"
-   $appgw
-
-   ...
-   TrustedRootCertificates             : {root-cert-wildcard-aks-ingress}
-   BackendHttpSettingsCollectionText   : [
-                                        {
-                                          ...
-                                          "TrustedRootCertificates": [
-                                            {
-                                              "Id": "/subscriptions/12345678-abcd-efgh-ijkl-987654321abc/resourceGroups/shco-rg-bu0001a0008/providers/Microsoft.Network/applicationGateways/shco-apw-pbl5hvxsyw5yy/trustedRootCertificates/root-cert-wildcard-aks-ingress"
-                                            }
-   ```
-   
 1. To only allow _your specific_ Front Door to access the Application Gateway, get the _Front Door ID_ from the resource overview. 
-   
 
+   ![](img/061_waf-policy_front-door-id.png)
 
-1. ...to be continued.
+1. Browse to the _Application Gateway WAF policy_ in the Resource Group `[your prefix]-rg-bu0001a0008` and navigate to _Custom Rules_.
+
+   ![](img/062_waf-policy_custom-rules.png)
+
+1. Add a new custom rule, denying all traffic not originating from your individual Front Door instance.
+
+   ![](img/2022-05-09-11-49-01.png)
+
+   Do not forget to save the WAF policy configuration.
+
+1. Once the new custom rule is effective, requests dispatched from a Front Door instance with an ID other than `e2fc8833...` will be denied by the Web Application Firewall.
+
+   ![](img/064_waf-policy_access-restricted.png)
+
+   You have now restricted access to your backend to one specific Front Door only.
 
 
 # Resources
 - [End-to-end TLS with Azure Front Door](https://docs.microsoft.com/en-us/azure/frontdoor/end-to-end-tls#backend-tls-connection-azure-front-door-to-backend):
-
-  "For HTTPS connections, Azure Front Door expects that your backend presents a certificate from a valid Certificate Authority (CA) with subject name(s) matching the backend hostname."
-
-- [Migrate Web Application Firewall policies using Azure PowerShell](https://docs.microsoft.com/en-us/azure/web-application-firewall/ag/migrate-policy)
-   
-   (for `res/migrate-policy.ps1`)
