@@ -1,4 +1,4 @@
-# Multi-Region Setup.
+# Multi-Region Setup with Azure Front Door
 
 The business unit has deployed their application in two regions as independent application stamps. To improve overall availability of their solution for their end customers and protect from regional data center outages, they want both stamps to back up each other.
 
@@ -17,14 +17,14 @@ After further consultation with their architecture team, they decide to test [Az
 
 
 ##  Walthrough Overview
-In this overview, you will
-- Create an Azure Front Door instance.
-- Add your application stamps as _origins_ to your Front Door instance.
-- See how Front Door directs http(s) requests to the closest endpoint.
-- See how Front Door will handle a failover in case one origin becomes unavailable.
-- Restrict access to your origins, only allowing incoming traffic from Azure Front Door.
-- See that this does not prevent other Front Door instances to access your Application Gateway.
-- Learn how to restrict access from only your Front Door.
+In this walkthrough, you will...
+- create an Azure Front Door instance,
+- add your application stamps as _origins_ to your Front Door instance,
+- see how Front Door directs http(s) requests to the closest endpoint,
+- eee how Front Door will handle a failover in case one origin becomes unavailable,
+- restrict access to your origins, only allowing incoming traffic from Azure Front Door,
+- see that this does not prevent other Front Door instances to access your Application Gateway and
+- learn how to restrict access from only your Front Door.
 
 ## Procedure
 

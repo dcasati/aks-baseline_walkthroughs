@@ -1,4 +1,25 @@
-# Clone Repository and Build Image
+# Auto-Scaling with Horizontal Pod Autoscaler and Cluster Autoscaler
+
+The business unit wants to use the cloud's elasticity to scale their resources up and down in correspondance to the current load. To add resources the required resources on demand, the team decides to use the following platform capabilitites:
+
+- The [Kubernetes Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/), adding and removing pods to the existing set of virtual machines as load changes.
+- The [Cluster Autoscaler of an AKS cluster](https://docs.microsoft.com/en-us/azure/aks/cluster-autoscaler), adding and removing virtual machines to scale up the scale set and providing more CPU and memory capacity.
+
+## Prerequesites
+- Make sure you have a deployment of the AKS baseline architecture reference implementation deployed and available.
+
+##  Walthrough Overview
+In this walkthrough, you will...
+- build a new container image hosting an API that creates CPU load my multiplying random numbers,
+- deploy this application to your AKS cluster,
+- use Azure Load Testing to simulate concurrent user requests and inspect the resulting load,
+- instruct the AKS scheduler to scale the number of pods depending on CPU utilization,
+- use Azure Load Testing to simulate even more load and
+- see how AKS adds and removes virtual machines to the scale set to provide more resources.
+
+## Procedure
+
+### Clone repository and build image for new API
 
 1. Clone repo [cs_cross-platform-api](https://github.com/ulkeba/cs_cross-platform-api) to your development machine.
    This application provides a very simple API to generate some load on your worker nodes.
@@ -39,6 +60,9 @@
 
    ![](img/011_acr_image-built.png)
 
+
+### Deploy API to AKS cluster
+
 1. Edit the file `res/randommultiplications.yaml` and 
    - replace `<your acr name>` point to your ACR.
    - replace `<your domain>` with your domain.
@@ -71,7 +95,7 @@
    (It takes some seconds to generate some millions of random numbers, simply putting some pressure on the CPU).
 
 
-#  Run your first Load Test with Azure Load Testing
+###  Run your first Load Test with Azure Load Testing
 
 1. (Prerequisite) We are creating some load on the backend that might cause slow responses. To avoid Application Gateway to close connections early, increase the timeout from 60 to 300 seconds:
    
@@ -114,9 +138,13 @@
 
    ![](img/047_load-test-1_test-results.png)
 
-# Run your second Test
+### Define the Horizontal Pod Autoscaler for your application and run a second Test
 
-1. Deploy the `Horizontal Pod Autoscaler` defined in `randommultiplications-hpa.yaml`.
+1. Inspect `randommultiplications-hpa.yaml` and see how the defined `Horizontal Pod Autoscaler` instructs the Kubernetes cluster to scale between 2 (line 8) and 10 (line 10) replicas, achieving a CPU utilization of 95% (line 13).
+   
+   Note: These values are example values provoking an agressive scaling behavior for this demo; you might want to reconsider these values for your deployments.
+
+1. Deploy the _Horizontal Pod Autoscaler_ as defined in `randommultiplications-hpa.yaml`.
 
    ```bash
    kubectl apply -f randommultiplications-hpa.yaml
@@ -162,11 +190,13 @@
 
    ![](img/052_load-test-2_container-insights.png)
 
-1. Inspect the results of the test again. You can see that (a) response times reduced towards the end of the test and much more requests could be processed per minute.
+1. Inspect the results of the test again. You can see that (a) response times reduced towards the end of the test and (b) much more requests could be processed per minute.
 
    ![](img/051_load-test-2_test-results.png)
 
-# Increase Pressure.
+1. If you want, wait some time until the number of pods will be scaled down back to 2.
+
+### Increase load by simulating more concurrent and sequential user requets
 
 1. Increase `maxReplicas` in `randommultiplications-hpa.yaml` to 100 and redeploy the pod autoscaler.
 
@@ -182,13 +212,14 @@
    watch kubectl get nodes
    ```
 
-   After some time, you will not only see the number of pods increasing, but also the number od nodes.
+   After some time, you will not only see the number of pods increasing, but also the number of nodes.
 
 1. Observing the _Nodes_ tab of your AKS _Insights_, you see the load on your worker nodes and how more workers are added to the cluster:
 
    ![](img/062_load-test-3_node-insights.png)
 
-1. Note that there are some pods remaining in the _Unscheduled_ section. They remain unscheduled as the maximum number of nodes for the agent pool (which is 5) has been reached.  You can verify this in the AKS logs:
+1. Note that there are some pods remaining in the _Unscheduled_ section. They remain unscheduled as the maximum number of nodes for the `npuser01` node pool (which is 5) has been reached.  You can verify this in the AKS logs:
+
    ```
    AzureDiagnostics
    | where Category == "cluster-autoscaler"
