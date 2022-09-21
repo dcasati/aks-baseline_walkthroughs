@@ -21,8 +21,13 @@ In this walkthrough, you will...
 
 ### Clone repository and build image for new API
 
-1. Clone repo [cs_cross-platform-api](https://github.com/ulkeba/cs_cross-platform-api) to your development machine.
+1. Clone repo [cs_cross-platform-api](https://github.com/ulkeba/cs_cross-platform-api) and checkout tag `v0.1' to your development machine.
    This application provides a very simple API to generate some load on your worker nodes.
+
+   ```
+   git clone https://github.com/ulkeba/cs_cross-platform-api.git
+   git checkout v0.1
+   ```
 
 1. (optional) If you want to test it, run `dotnet run`...
    ```bash
