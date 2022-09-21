@@ -1,15 +1,16 @@
 # Auto-Scaling with Horizontal Pod Autoscaler and Cluster Autoscaler
 
-The business unit wants to use the cloud's elasticity to scale their resources up and down in correspondance to the current load. To add resources the required resources on demand, the team decides to use the following platform capabilitites:
+In this walkthrough, we will explore the options of Azure Kubernetes Services (AKS) to scale based on actual user load. 
+It will demonstrate the setup and use of  following A KS platform capabilitites:
 
 - The [Kubernetes Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/), adding and removing pods to the existing set of virtual machines as load changes.
 - The [Cluster Autoscaler of an AKS cluster](https://docs.microsoft.com/en-us/azure/aks/cluster-autoscaler), adding and removing virtual machines to scale up the scale set and providing more CPU and memory capacity.
 
-## Prerequesites
-- Make sure you have a deployment of the AKS baseline architecture reference implementation deployed and available.
+To emulate userload, this tutorial uses [Azure Load Testing](https://docs.microsoft.com/en-us/azure/load-testing/overview-what-is-azure-load-testing).
 
 ##  Walthrough Overview
 In this walkthrough, you will...
+- create a new AKS cluster using the [AKS Construction Helper](https://azure.github.io/AKS-Construction/).
 - build a new container image hosting an API that creates CPU load my multiplying random numbers,
 - deploy this application to your AKS cluster,
 - use Azure Load Testing to simulate concurrent user requests and inspect the resulting load,
@@ -18,6 +19,48 @@ In this walkthrough, you will...
 - see how AKS adds and removes virtual machines to the scale set to provide more resources.
 
 ## Procedure
+
+### Create your Azure Kubernetes Service (AKS) cluster and Azure Container Registry (ACR)
+
+1. Use the [AKS Construction Helper](https://azure.github.io/AKS-Construction/) to setup your target AKS cluster. Use this [predefined configuration](https://azure.github.io/AKS-Construction/?ops=none&secure=low&deploy.clusterName=az-k8s-khim&deploy.rg=az-k8s-khim-rg&cluster.SystemPoolType=CostOptimised&cluster.agentCount=1&cluster.vmSize=default&cluster.osDiskType=Managed&cluster.osDiskSizeGB=0&cluster.availabilityZones=no&addons.registry=Basic&addons.azurepolicy=none&deploy.deployItemKey=deployArmCli&addons.monitor=aci) to make sure you configure it appropriately or use the Azure CLI snippets below.
+
+   ```bash
+   # Log in
+   az login 
+
+   # Create Resource Group
+   az group create -l WestEurope -n az-k8s-khim-rg
+   
+   # Deploy template with in-line parameters
+   az deployment group create \
+      -g az-k8s-khim-rg  \
+      --template-uri https://github.com/Azure/AKS-Construction/releases/download/0.8.11/main.json \
+      --parameters \
+   	  resourceName=az-k8s-khim \
+   	  agentCount=1 \
+   	  agentVMSize=Standard_D2ds_v4 \
+   	  osDiskType=Managed \
+   	  registries_sku=Basic \
+   	  acrPushRolePrincipalId=$(az ad signed-in-user show --query id --out tsv) \
+   	  omsagent=true \
+        retentionInDays=30
+   ```
+
+1. Check resources got deployed successfully and take a note of the names of both resources.
+
+   ![](img/2022-09-16-16-29-51.png)
+
+   ```bash
+   $ az acr list -g "az-k8s-khim-rg" -o table
+   NAME                      RESOURCE GROUP    LOCATION    SKU    LOGIN SERVER                         CREATION DATE         ADMIN ENABLED
+   ------------------------  ----------------  ----------  -----  -----------------------------------  --------------------  ---------------
+   crazk8skhimqwzol4vktwxre  az-k8s-khim-rg    westeurope  Basic  crazk8skhimqwzol4vktwxre.azurecr.io  2022-09-08T11:03:35Z  False
+   
+   $ az aks list -g "az-k8s-khim-rg" -o table
+   Name             Location    ResourceGroup    KubernetesVersion    CurrentKubernetesVersion    ProvisioningState    Fqdn
+   ---------------  ----------  ---------------  -------------------  --------------------------  -------------------  -------------------------------------------------
+   aks-az-k8s-khim  westeurope  az-k8s-khim-rg   1.23.8               1.23.8                      Succeeded            az-k8s-khim-dns-318a3497.hcp.   westeurope.azmk8s.io
+   ```
 
 ### Clone repository and build image for new API
 
@@ -39,19 +82,18 @@ In this walkthrough, you will...
        Now listening on: https://localhost:7230
    ```
 
-   and browse to endpoint `https://localhost:7230/RandomMultiplications`:
+   and browse to endpoint `https://localhost:7230/RandomNumbers`:
 
    ```bash
-   $ curl -k https://localhost:7230/RandomMultiplications
-   {"numbersGenerated":104857600,"timeUsed":864.8026}
+   $ curl -k https://localhost:7230/RandomNumbers
+   {"numbersGenerated":10000000,"timeUsed":45.7634}
    ```
-1. For simplicity, temporarily open your container registry for for client IP:
-   
-   ![](img/010_acr_public-access.png)
+
+1. (optional) Open [`Controllers/RandomNumbersController.cs`](https://github.com/ulkeba/cs_cross-platform-api/blob/main/Controllers/RandomNumbersController.cs) to inspect the application logic; see how Method `Get(.)` simply creates multiplications of random numbers.
 
 1. Build this application as container in your Azure Container Registry:
    ```bash
-   az acr build --image randommultiplications-linux:latest --registry "lehoacraksrio6zecikhluy" --file Dockerfile-linux .
+   az acr build --image randomnumbers-linux:latest --registry "crazk8skhim2vryhzvv23oxek" --file Dockerfile-linux .
    ...
    Run ID: cb7 was successful after 49s
    ```
@@ -63,68 +105,71 @@ In this walkthrough, you will...
 
 ### Deploy API to AKS cluster
 
-1. Edit the file `res/randommultiplications.yaml` and 
-   - replace `<your acr name>` point to your ACR.
-   - replace `<your domain>` with your domain.
+1. Edit the file `res/randomnumbers.yaml` and replace `<your acr name>` point to your ACR.
 
 1. Apply the descriptor ...
 
    ```bash
-   kubectl apply -f ./randommultiplications.yaml
+   kubectl apply -f ./randomnumbers.yaml
    ```
 
    ...and check the deployment can be created successfully:
 
    ```bash
-   kubectl get deployments -n a0008
+   kubectl get deployments -n scaling-wt
    NAME                         READY   UP-TO-DATE   AVAILABLE   AGE
-   mult-deployment              2/2     2            2           2h
+   rand-deployment              2/2     2            2           2h
    ```
 
-1. Open `https://bicycle.<your domain>/RandomMultiplications` and check the API returns a response:
+1. Get the public IP address of the Load Balancer from column `EXTERNAL-IP` of the corresponding service:
+
+   ```bash
+   kubectl get services -n scaling-wt
+   NAME           TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)        AGE
+   rand-service   LoadBalancer   172.10.43.190   20.101.252.99   80:30263/TCP   2m29s
+   ```
+
+1. Open `https://<your external IP>/RandomNumbers` and check the API returns a response:
 
    ![](img/020_randommultiplications_browser.png)
 
    ...or:
 
    ```bash
-   curl -k https://bicycle.leho.com/RandomMultiplications
-   {"numbersGenerated":104857600,"timeUsed":6757.4791}
+   curl http://20.101.252.99/RandomNumbers
+   {"numbersGenerated":104857600,"timeUsed":405.4791}
    ```
 
-   (It takes some seconds to generate some millions of random numbers, simply putting some pressure on the CPU).
+   If you are surprised that it takes much longer to generate the random numbers on the AKS cluster than on your developer machine, note that the workload pods have a CPU restriction of 100 millicores, i.e. only 10% of one vCPU core (see `resources.limits.cpu` in `randomnumbers.yaml`).
 
 
 ###  Run your first Load Test with Azure Load Testing
 
-1. (Prerequisite) We are creating some load on the backend that might cause slow responses. To avoid Application Gateway to close connections early, increase the timeout from 60 to 300 seconds:
-   
-   ![](img/030_load-test_increase-timeout.png)
-
-
-1. (For your information only) We will use Azure Load Testing in the following steps. This takes a Apache JMeter test plan as input to simulate load on workloads running on the Azure platform. You can use the JMeter GUI (see sceenshot) to define a testplan; in this tutorial, we will use a predefined test plan.
+1. (For your information only) We will use [Azure Load Testing](https://docs.microsoft.com/en-us/azure/load-testing/overview-what-is-azure-load-testing) in the following steps. This takes a [Apache JMeter](https://jmeter.apache.org/) test plan as input to simulate load on workloads running on the Azure platform. You can use the JMeter GUI (see sceenshot) to define a testplan; in this tutorial, we will use a predefined test plan.
 
    ![](img/035_load-test_jmeter.png)
 
-1. In the Azure portal, create a new Azure Load Testing in (Please note that this resoruce is currently in Public Preview!).
-   Please create the instance in region _East US 2_ (no matter where the other resources are deployed).
-   (Note that Load Testing currently is only available in a limited set of regions.)
+1. In the Azure portal, create a new Azure Load Testing resource in a region that is close to your resources (Please note that this resoruce is currently in Public Preview and therefore only available in a limited set of regions).
 
    ![](img/040_load-test-1_new-load-testing.png)
 
    ![](img/041_load-test-1_create-load-testing.png)
 
-1. Create a new test and name it "25 threads, 10 loops"
+1. Create a new JMeter script test and name it "10 threads, 50 loops"
    
+   :exclamation: Most screenshots below this will need to be updated -- if in doubt, follow instructions in text!
+
+   ![](img/042_load-test-1_new-test-1.png)
+
    ![](img/042_load-test-1_new-test.png)
 
 1. Upload `load-test.jmx` from the `res` directory.
 
    ![](img/043_load-test-1_upload-definition.jmx.png)
 
-1. Define the parameters `appGatewayEndpoint` (IP of your application gateway), `hostHeader`, `threads` (defining how many requests will be run in parallel) and `loops` (how man repetitions will be done):
+1. Define the parameters `protocol` (either `http` or `https`, please use `http` in this tutorial), `endpoint` (public IP of the service), `path` (`RandomNumbers` in this tutorial), `hostHeader` (:exclamation:), `threads` (defining how many requests will be run in parallel) and `loops` (how man repetitions will be done):
 
-   ![](img/044_load-test-1_parameters.png)
+   ![](img/044a_load-test-1_parameters.png)
 
 1. Accept the for _Load_ and _Test criteria_ and add your AKS resource and the `npuser` Virtual Machine Scale Set as monitored resources (double-check you select the right ones ;-)).
 
@@ -132,57 +177,63 @@ In this walkthrough, you will...
 
 1. Wait for the test to complete. You might want to inspect _Insights_ of your AKS cluster while the test is running:
 
+   :construction: Execution time with 10/50: 4mins.
+
+   :construction: Response times with 10/50: 6.59s
+
    ![](img/046_load-test-1_container-insights.png)
 
 1. Inspect the results of your test. Response times are pretty high...
+
 
    ![](img/047_load-test-1_test-results.png)
 
 ### Define the Horizontal Pod Autoscaler for your application and run a second Test
 
-1. Inspect `randommultiplications-hpa.yaml` and see how the defined `Horizontal Pod Autoscaler` instructs the Kubernetes cluster to scale between 2 (line 8) and 10 (line 10) replicas, achieving a CPU utilization of 95% (line 13).
+1. Inspect `randomnumbers-hpa.yaml` and see how the defined `Horizontal Pod Autoscaler` instructs the Kubernetes cluster to scale between 2 (line 8) and 10 (line 10) replicas, achieving a CPU utilization of 95% (line 13).
    
    Note: These values are example values provoking an agressive scaling behavior for this demo; you might want to reconsider these values for your deployments.
 
-1. Deploy the _Horizontal Pod Autoscaler_ as defined in `randommultiplications-hpa.yaml`.
+1. Deploy the _Horizontal Pod Autoscaler_ as defined in `randomnumbers-hpa.yaml`.
 
    ```bash
-   kubectl apply -f randommultiplications-hpa.yaml
+   kubectl apply -f randomnumbers-hpa.yaml
    ```
 
 1. Start watching the set of pods deployed to your cluster using `watch`:
 
    ```batch
-   watch kubectl get pods -n a0008
+   watch kubectl get pods -n scaling-wt
    ```
 
    Example output:
    ```bash
-   Every 2.0s: kubectl get pods -n a0008         LAPTOP-QP3491VL: Wed May  4 10:00:11 2022
+   Every 2.0s: kubectl get pods -n scaling-wt         LAPTOP-QP3491VL: Wed May  4 10:00:11 2022
 
    NAME                                        READY   STATUS    RESTARTS      AGE
-   mult-deployment-7766b6c6b8-bdrwk            1/1     Running   0             14h
-   mult-deployment-7766b6c6b8-tfgkm            1/1     Running   0             14h
+   rand-deployment-7766b6c6b8-bdrwk            1/1     Running   0             14h
+   rand-deployment-7766b6c6b8-tfgkm            1/1     Running   0             14h
    ...
    ```
+1. Add a new JMeter script test in your Azure Load Testing resource with name "25 threads, 100 loops". Use the same script file `load-test.jmx` and same values for parameters `protocol`, `endpoint`, `hostHeader` and `path`. However, use configure the test to run with 25 as value for `threads` and 100 for value of `loops`.
 
-1. Re-run the existing Azure Load Test again and observe how kubernetes deploys further (up to 10) pods to serve incoming requests.
+1. Start your new Azure Load Test and observe how kubernetes deploys further (up to 10) pods to serve incoming requests.
 
    Example output:
    ```bash
-   Every 2.0s: kubectl get pods -n a0008         LAPTOP-QP3491VL: Wed May  4 10:07:09 2022
+   Every 2.0s: kubectl get pods -n scaling-wt         LAPTOP-QP3491VL: Wed May  4 10:07:09 2022
 
    NAME                                        READY   STATUS    RESTARTS      AGE
-   mult-deployment-7766b6c6b8-2tpxg            1/1     Running   0             2m13s
-   mult-deployment-7766b6c6b8-452v4            1/1     Running   0             3m13s
-   mult-deployment-7766b6c6b8-45fx8            1/1     Running   0             2m13s
-   mult-deployment-7766b6c6b8-8k2kt            1/1     Running   0             2m13s
-   mult-deployment-7766b6c6b8-bdrwk            1/1     Running   0             14h
-   mult-deployment-7766b6c6b8-ddpk6            1/1     Running   0             4m14s
-   mult-deployment-7766b6c6b8-fzcj9            1/1     Running   0             3m59s
-   mult-deployment-7766b6c6b8-gjqgx            1/1     Running   0             2m13s
-   mult-deployment-7766b6c6b8-p8vnz            1/1     Running   0             4m14s
-   mult-deployment-7766b6c6b8-tfgkm            1/1     Running   0             14h
+   rand-deployment-7766b6c6b8-2tpxg            1/1     Running   0             2m13s
+   rand-deployment-7766b6c6b8-452v4            1/1     Running   0             3m13s
+   rand-deployment-7766b6c6b8-45fx8            1/1     Running   0             2m13s
+   rand-deployment-7766b6c6b8-8k2kt            1/1     Running   0             2m13s
+   rand-deployment-7766b6c6b8-bdrwk            1/1     Running   0             14h
+   rand-deployment-7766b6c6b8-ddpk6            1/1     Running   0             4m14s
+   rand-deployment-7766b6c6b8-fzcj9            1/1     Running   0             3m59s
+   rand-deployment-7766b6c6b8-gjqgx            1/1     Running   0             2m13s
+   rand-deployment-7766b6c6b8-p8vnz            1/1     Running   0             4m14s
+   rand-deployment-7766b6c6b8-tfgkm            1/1     Running   0             14h
    ...
    ```
 
@@ -192,46 +243,31 @@ In this walkthrough, you will...
 
 1. Inspect the results of the test again. You can see that (a) response times reduced towards the end of the test and (b) much more requests could be processed per minute.
 
+   :construction: Execution time with 25/100: 6:30mins.
+
+   :construction: Response times with 25/100: 7.37s
+
    ![](img/051_load-test-2_test-results.png)
 
 1. If you want, wait some time until the number of pods will be scaled down back to 2.
 
 ### Increase load by simulating more concurrent and sequential user requets
 
-1. Increase `maxReplicas` in `randommultiplications-hpa.yaml` to 100 and redeploy the pod autoscaler.
+1. Increase `maxReplicas` in `randomnumbers-hpa.yaml` to 50 and redeploy the pod autoscaler.
 
-1. Create another test in Azure Load Testing with 50 threads and 100 loops and run it.
+1. Create another test in Azure Load Testing with 50 threads and 150 loops and run it.
 
    ![](img/061_load-test-3_test-parametes.png)
 
-1. You will see the number of pods increasing again.
+1. You will see the number of pods increasing again -- beyond the limit of 10 pods, but not reaching the 50 you specified in `randomnumbers-hpa.yaml`.
 
-1. Also start watching the set of worker nodes using `watch`:
+   :construction: Execution time with 50/150: 13:07mins.
 
-   ```batch
-   watch kubectl get nodes
-   ```
+   :construction: Response times with 50/150: 10.49s
 
-   After some time, you will not only see the number of pods increasing, but also the number of nodes.
+1. Browse to the _Nodes_ tab of your AKS _Insights_. You see the load on your worker node (containing the node pool `npuser01` in its name) and a section titled _Unscheduled_ that lists some pods that the AKS cluster would have like to start but was unable to schedule:
 
-1. Observing the _Nodes_ tab of your AKS _Insights_, you see the load on your worker nodes and how more workers are added to the cluster:
-
-   ![](img/062_load-test-3_node-insights.png)
-
-1. Note that there are some pods remaining in the _Unscheduled_ section. They remain unscheduled as the maximum number of nodes for the `npuser01` node pool (which is 5) has been reached.  You can verify this in the AKS logs:
-
-   ```
-   AzureDiagnostics
-   | where Category == "cluster-autoscaler"
-   | project TimeGenerated, attrs_s, log_s, pod_s
-   | sort by TimeGenerated desc
-   ```
-
-   ...there will be messages like:
-   ```
-   I0504 08:51:27.738811 1 scale_up.go:461] No expansion options
-   I0504 08:51:17.536867 1 klogx.go:86] Pod a0008/mult-deployment-7766b6c6b8-8rzzz is unschedulable
-   ```
+   ![](img/062a_load-test-3_node-insights.png)
 
 1. But why is that? Open the AKS Logs, search for the predefined query _Kubernetes events_ and run it.
 
@@ -249,10 +285,10 @@ In this walkthrough, you will...
    ...and will reveal messages like:
 
    ```
-   0/8 nodes are available: 1 node(s) were unschedulable, 3 node(s) had taint {CriticalAddonsOnly: true}, that the pod didn't tolerate, 4 Insufficient cpu.
+   0/2 nodes are available: 1 Insufficient cpu, 1 node(s) had taint {CriticalAddonsOnly: true}, that the pod didn't tolerate.
    ```
    
-   The interesting part is `4 Insufficient cpu`, preventing pods from being assigned to the nodes of our `npuser01` node pool. Let us take a closer look at one of these nodes using:
+   The interesting part is `1 Insufficient cpu`, preventing pods from being assigned to the nodes of our `npuser01` node pool. Let us take a closer look at one of these nodes using:
 
    ```bash
    kubectl describe node aks-npuser01-37699233-vmss000004  | less
@@ -268,18 +304,79 @@ In this walkthrough, you will...
    (Total limits may be over 100 percent, i.e., overcommitted.)
    Resource           Requests      Limits
    --------           --------      ------
-   cpu                1870m (98%)   6470m (340%)
+   cpu                1830m (96%)   5556m (292%)
    ```
 
-   As each pod requests 50 mili cores (see resource requests in `randommultiplications.yaml`), scheduling another one would exceed the limit of 1900 mili cores available on that node.
+   As each pod requests 75 mili cores (see resource requests in `randomnumbers.yaml`), scheduling another one would exceed the limit of 1900 mili cores available on that node. Therefore, the 
 
    Note that looking at the _Nodes_ tab of AKS _Insights_, CPU capacity does _not_ seem to be exhausted (the bars representing the load remain green and do not reach a high percentage). This is because this load represents the actual CPU load rather than the resource requests.
-   
-1. (For information only) Using the `Metrics` balde, you can also configure custom graphs to get insights about the state of you cluster. For example, select the namespace `insights.containers/pods`, metric `podCount` and apply a splitting by `Node` to see the number of pods scheduled on each node. 
+
+1. We have seen how the Horizontal Pod Autoscaler adds and removes pods as load on our application increases and decreases. It uses the resource requests (in mili cores of CPU capacity and bytes of memory) to decide if a node has sufficient remaining capacity to host another pod. If it has not, scheduling the pod may fail in lack of available resources.
+
+
+### Enable the cluster autoscaler to add scale up the Virtual Machine Scale Set and add further VMs on demand
+
+1. In the next step, you will enable the [cluster autoscaler](https://learn.microsoft.com/en-us/azure/aks/cluster-autoscaler) for your AKS cluster. It will add nodes to your node pool when pods cannot be scheduled due to resource constraints and will remove nodes from node pools when consolidation of pods allows. 
+
+1. Run the following command to change the default cluster autoscaler profile (default values can be found in the [AKS Cluster REST API documentation](https://learn.microsoft.com/en-us/rest/api/aks/managed-clusters/create-or-update?tabs=HTTP#autoscalerprofile)). These paremeters enable a rather agressive scale-down to avoid longer waiting times in this tutorial. Please be mindful when setting these values in your own cluster.
+
+   ```bash
+   az aks update \
+     --resource-group az-k8s-khim-rg \
+     --name aks-az-k8s-khim \
+     --cluster-autoscaler-profile \
+       scale-down-unneeded-time=2m \
+       scale-down-utilization-threshold=0.8
+   ```
+
+   Note that this command _does not enable_ autoscaling itself but only provides parameters for autoscaler where it is already enabled.
+
+1. Therefore, enable autoscaling on your `npuser01` node pool now:
+
+   ```bash
+   az aks nodepool update \
+     --resource-group az-k8s-khim-rg \
+     --cluster-name aks-az-k8s-khim \
+     --name npuser01 \
+     --enable-cluster-autoscaler \
+     --min-count 1 \
+     --max-count 3
+   ```
+
+1. Start watching the set of pods as well as the set of worker nodes using `watch`:
+
+   ```batch
+   kubectl get pods -n scaling-wt
+   ```
+
+   ```batch
+   watch kubectl get nodes
+   ```
+
+1. Restart the test with `50 threads, 500 loops`; after some time, you will not only see the number of pods increasing, but also the number of nodes.
+
+   ```batch
+   kubectl get nodes
+   NAME                               STATUS   ROLES   AGE    VERSION
+   aks-npsystem-40226941-vmss000000   Ready    agent   10h    v1.23.8
+   aks-npuser01-40226941-vmss000000   Ready    agent   10h    v1.23.8
+   aks-npuser01-40226941-vmss000001   Ready    agent   28m    v1.23.8
+   aks-npuser01-40226941-vmss000002   Ready    agent   3m7s   v1.23.8
+   ```
+
+1. Also, observing the _Nodes_ tab of your AKS _Insights_, you see the load on your worker nodes and how more workers are added to the cluster:
+
+   ![](img/062_load-test-3_node-insights.png)
+
+1. (For information only) Using the `Metrics` balde, you can also configure custom graphs to get insights about the state of your cluster. For example, select the namespace `insights.containers/pods`, metric `podCount` and apply a splitting by `Node` to see the number of pods scheduled on each node. 
 
    ![](img/063_load-test-3_pods-per-node.png)
 
 1. Once the test terminated, inspect the results of the test again. Also see how the peak of requests per second correlates with the peak of deployed pods.
+
+   :construction: Execution time with 50/500: 24:10mins.
+   
+   :construction: Response times with 50/500: 5.21s
 
    ![](img/064_load-test-3_test-results.png)
 
@@ -363,3 +460,9 @@ _Frequently Asked Questions_ (`autoscaler/cluster-autoscaler/FAQ.md`) in [kubern
    ```
 
 - [Safely Drain a Node](https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/)
+
+
+
+# :construction: Todos 
+- Change github links to MS repo?
+- Consistency of screenshots (especially the resource names and parameter names and values) with text.

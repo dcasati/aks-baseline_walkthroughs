@@ -31,19 +31,19 @@
                     <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
                         <collectionProp name="Arguments.arguments"/>
                     </elementProp>
-                    <stringProp name="HTTPSampler.domain">${appGatewayEndpoint}</stringProp>
+                    <stringProp name="HTTPSampler.domain">${endpoint}</stringProp>
                     <stringProp name="HTTPSampler.port"></stringProp>
-                    <stringProp name="HTTPSampler.protocol">https</stringProp>
+                    <stringProp name="HTTPSampler.protocol">${protocol}</stringProp>
                     <stringProp name="HTTPSampler.contentEncoding"></stringProp>
-                    <stringProp name="HTTPSampler.path">RandomMultiplications</stringProp>
+                    <stringProp name="HTTPSampler.path">${path}</stringProp>
                     <stringProp name="HTTPSampler.method">GET</stringProp>
                     <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
                     <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
                     <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
                     <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
                     <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
-                    <stringProp name="HTTPSampler.connect_timeout"></stringProp>
-                    <stringProp name="HTTPSampler.response_timeout"></stringProp>
+                    <stringProp name="HTTPSampler.connect_timeout">60000</stringProp>
+                    <stringProp name="HTTPSampler.response_timeout">60000</stringProp>
                 </HTTPSamplerProxy>
                 <hashTree>
                     <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Header Manager" enabled="true">
@@ -52,10 +52,6 @@
                                 <stringProp name="Header.name">Host</stringProp>
                                 <stringProp name="Header.value">${hostHeader}</stringProp>
                             </elementProp>
-                            <elementProp name="" elementType="Header">
-                                <stringProp name="Header.name"></stringProp>
-                                <stringProp name="Header.value"></stringProp>
-                            </elementProp>
                         </collectionProp>
                     </HeaderManager>
                     <hashTree/>
@@ -63,10 +59,22 @@
             </hashTree>
             <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
                 <collectionProp name="Arguments.arguments">
-                    <elementProp name="appGatewayEndpoint" elementType="Argument">
-                        <stringProp name="Argument.name">appGatewayEndpoint</stringProp>
-                        <stringProp name="Argument.value">${__BeanShell( System.getenv("appGatewayEndpoint") )}</stringProp>
-                        <stringProp name="Argument.desc">Application Gateway Endpoint</stringProp>
+                    <elementProp name="protocol" elementType="Argument">
+                        <stringProp name="Argument.name">protocol</stringProp>
+                        <stringProp name="Argument.value">${__BeanShell( System.getenv("protocol") )}</stringProp>
+                        <stringProp name="Argument.desc">URL protocol</stringProp>
+                        <stringProp name="Argument.metadata">=</stringProp>
+                    </elementProp>
+                    <elementProp name="endpoint" elementType="Argument">
+                        <stringProp name="Argument.name">endpoint</stringProp>
+                        <stringProp name="Argument.value">${__BeanShell( System.getenv("endpoint") )}</stringProp>
+                        <stringProp name="Argument.desc">URL endpoint</stringProp>
+                        <stringProp name="Argument.metadata">=</stringProp>
+                    </elementProp>
+                    <elementProp name="path" elementType="Argument">
+                        <stringProp name="Argument.name">path</stringProp>
+                        <stringProp name="Argument.value">${__BeanShell( System.getenv("path") )}</stringProp>
+                        <stringProp name="Argument.desc">URL path</stringProp>
                         <stringProp name="Argument.metadata">=</stringProp>
                     </elementProp>
                     <elementProp name="hostHeader" elementType="Argument">
