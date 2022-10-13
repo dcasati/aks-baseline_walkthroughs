@@ -1,12 +1,12 @@
 # Auto-Scaling with Horizontal Pod Autoscaler and Cluster Autoscaler
 
 In this walkthrough, we will explore the options of Azure Kubernetes Services (AKS) to scale based on actual user load. 
-It will demonstrate the setup and use of  following A KS platform capabilitites:
+It will demonstrate the setup and use of following AKS platform capabilities:
 
 - The [Kubernetes Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/), adding and removing pods to the existing set of virtual machines as load changes.
 - The [Cluster Autoscaler of an AKS cluster](https://docs.microsoft.com/en-us/azure/aks/cluster-autoscaler), adding and removing virtual machines to scale up the scale set and providing more CPU and memory capacity.
 
-To emulate userload, this tutorial uses [Azure Load Testing](https://docs.microsoft.com/en-us/azure/load-testing/overview-what-is-azure-load-testing).
+To emulate user load, this tutorial uses [Azure Load Testing](https://docs.microsoft.com/en-us/azure/load-testing/overview-what-is-azure-load-testing).
 
 ##  Walthrough Overview
 In this walkthrough, you will...
@@ -107,7 +107,7 @@ In this walkthrough, you will...
 
 1. Edit the file `res/randomnumbers.yaml` and replace `<your acr name>` point to your ACR.
 
-1. Apply the descriptor ...
+1. Apply the manifest:
 
    ```bash
    kubectl apply -f ./randomnumbers.yaml
@@ -129,7 +129,7 @@ In this walkthrough, you will...
    rand-service   LoadBalancer   172.10.43.190   20.101.252.99   80:30263/TCP   2m29s
    ```
 
-1. Open `https://<your external IP>/RandomNumbers` and check the API returns a response:
+1. Open `http://<your external IP>/RandomNumbers` and check the API returns a response:
 
    ![](img/020_randommultiplications_browser.png)
 
@@ -145,11 +145,11 @@ In this walkthrough, you will...
 
 ###  Run your first Load Test with Azure Load Testing
 
-1. (For your information only) We will use [Azure Load Testing](https://docs.microsoft.com/en-us/azure/load-testing/overview-what-is-azure-load-testing) in the following steps. This takes a [Apache JMeter](https://jmeter.apache.org/) test plan as input to simulate load on workloads running on the Azure platform. You can use the JMeter GUI (see sceenshot) to define a testplan; in this tutorial, we will use a predefined test plan.
+1. (For your information only) We will use [Azure Load Testing](https://docs.microsoft.com/en-us/azure/load-testing/overview-what-is-azure-load-testing) in the following steps. This takes a [Apache JMeter](https://jmeter.apache.org/) test plan as input to simulate load on workloads running on the Azure platform. You can use the JMeter GUI (see screenshot) to define a testplan; in this tutorial, we will use a predefined test plan.
 
    ![](img/035_load-test_jmeter.png)
 
-1. In the Azure portal, create a new Azure Load Testing resource in a region that is close to your resources (Please note that this resoruce is currently in Public Preview and therefore only available in a limited set of regions).
+1. In the Azure portal, create a new Azure Load Testing resource in a region that is close to your resources (Please note that this resource is currently in Public Preview and therefore only available in a limited set of regions).
 
    ![](img/040_load-test-1_new-load-testing.png)
 
@@ -167,11 +167,12 @@ In this walkthrough, you will...
 
    ![](img/043_load-test-1_upload-definition.jmx.png)
 
-1. Define the parameters `protocol` (either `http` or `https`, please use `http` in this tutorial), `endpoint` (public IP of the service), `path` (`RandomNumbers` in this tutorial), `hostHeader` (:exclamation:), `threads` (defining how many requests will be run in parallel) and `loops` (how man repetitions will be done):
+1. Define the parameters `protocol` (either `http` or `https`, please use `http` in this tutorial), `endpoint` (public IP of the service), `path` (`RandomNumbers` in this tutorial), `hostHeader` (:exclamation:), `threads` (defining how many requests will be run in parallel) and `loops` (how many repetitions will be done):
 
    ![](img/044a_load-test-1_parameters.png)
 
-1. Accept the for _Load_ and _Test criteria_ and add your AKS resource and the `npuser` Virtual Machine Scale Set as monitored resources (double-check you select the right ones ;-)).
+1. Accept the default values for _Load_ and _Test criteria_ 
+1. Under _Monitoring_, add your `AKS` cluster resource and the `npuser` Virtual Machine Scale Set (typically found under the `MC_` resource group) as monitored resources (double-check you select the right ones ;-)).
 
    ![](img/045_load-test-1_monitoring.png)
 
@@ -190,9 +191,9 @@ In this walkthrough, you will...
 
 ### Define the Horizontal Pod Autoscaler for your application and run a second Test
 
-1. Inspect `randomnumbers-hpa.yaml` and see how the defined `Horizontal Pod Autoscaler` instructs the Kubernetes cluster to scale between 2 (line 8) and 10 (line 10) replicas, achieving a CPU utilization of 95% (line 13).
+1. Inspect `randomnumbers-hpa.yaml` and see how the defined `Horizontal Pod Autoscaler` instructs the Kubernetes cluster to scale between 2 (line 8) and 10 (line 10) replicas, achieving a CPU utilization of 30% (line 13).
    
-   Note: These values are example values provoking an agressive scaling behavior for this demo; you might want to reconsider these values for your deployments.
+   Note: These values are example values provoking an aggressive scaling behavior for this demo; you might want to reconsider these values for your deployments.
 
 1. Deploy the _Horizontal Pod Autoscaler_ as defined in `randomnumbers-hpa.yaml`.
 
@@ -251,7 +252,7 @@ In this walkthrough, you will...
 
 1. If you want, wait some time until the number of pods will be scaled down back to 2.
 
-### Increase load by simulating more concurrent and sequential user requets
+### Increase load by simulating more concurrent and sequential user requests
 
 1. Increase `maxReplicas` in `randomnumbers-hpa.yaml` to 50 and redeploy the pod autoscaler.
 
@@ -294,7 +295,7 @@ In this walkthrough, you will...
    kubectl describe node aks-npuser01-37699233-vmss000004  | less
    ```
 
-   The output reveals that 1870 of 1900 avaialable mili cores have already been allocated. 
+   The output reveals that 1870 of 1900 available mili cores have already been allocated. 
 
    ```
    Allocatable:
@@ -318,7 +319,7 @@ In this walkthrough, you will...
 
 1. In the next step, you will enable the [cluster autoscaler](https://learn.microsoft.com/en-us/azure/aks/cluster-autoscaler) for your AKS cluster. It will add nodes to your node pool when pods cannot be scheduled due to resource constraints and will remove nodes from node pools when consolidation of pods allows. 
 
-1. Run the following command to change the default cluster autoscaler profile (default values can be found in the [AKS Cluster REST API documentation](https://learn.microsoft.com/en-us/rest/api/aks/managed-clusters/create-or-update?tabs=HTTP#autoscalerprofile)). These paremeters enable a rather agressive scale-down to avoid longer waiting times in this tutorial. Please be mindful when setting these values in your own cluster.
+1. Run the following command to change the default cluster autoscaler profile (default values can be found in the [AKS Cluster REST API documentation](https://learn.microsoft.com/en-us/rest/api/aks/managed-clusters/create-or-update?tabs=HTTP#autoscalerprofile)). These parameters enable a rather aggressive scale-down to avoid longer waiting times in this tutorial. Please be mindful when setting these values in your own cluster.
 
    ```bash
    az aks update \
@@ -449,12 +450,12 @@ _Frequently Asked Questions_ (`autoscaler/cluster-autoscaler/FAQ.md`) in [kubern
    kubectl describe nodes | less
    ```
 
-- Change threshold to consider underitilization from `0.5` to `0.8`
+- Change threshold to consider underutilization from `0.5` to `0.8`
    ```bash
    az aks update --resource-group leho-rg-bu0001a0008 --name leho-aks-rio6zecikhluy --cluster-autoscaler-profile scale-down-utilization-threshold=0.8
    ```
 
-- Change unnneeded time for a more aggressive scale down:
+- Change unneeded time for a more aggressive scale down:
    ```bash
    az aks update --resource-group leho-rg-bu0001a0008 --name leho-aks-rio6zecikhluy --cluster-autoscaler-profile scale-down-unneeded-time=2m
    ```
