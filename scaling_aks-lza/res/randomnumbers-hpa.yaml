@@ -10,4 +10,4 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: rand-deployment
-  targetCPUUtilizationPercentage: 95
+  targetCPUUtilizationPercentage: 30
